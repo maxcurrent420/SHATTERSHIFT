@@ -66,7 +66,7 @@ const playerGeometry = new THREE.BoxGeometry( 1, 1, 1 );
 const playerMaterial = new THREE.MeshLambertMaterial( { color: 0x00ff00 } );
 const playerCube = new THREE.Mesh( playerGeometry, playerMaterial );
 scene.add( playerCube );
-playerCube.position.set(0, 1, 0); // Initial position
+playerCube.position.set(0, 2, 0); // Initial position - raised to 2 units
 playerCube.castShadow = true; // Player casts shadow
 
 
@@ -90,12 +90,18 @@ const keys = {
   backward: false,
   left: false,
   right: false,
-  up: false,
-  down: false
+  up: false, // Spacebar for jump - keeping 'up' for jump for now
+  down: false,
+  jump: false // New jump key state
 };
 
 const moveSpeed = 0.1;
 const playerHeight = 1; // Approximate player height
+const jumpVelocity = 0.07; // Initial jump velocity
+let isJumping = false; // Track if player is currently jumping
+let verticalVelocity = 0; // Vertical velocity for jumping and gravity
+const gravityValue = -0.002; // Standard gravity value
+
 
 document.addEventListener('keydown', (e) => {
   switch (e.code) {
@@ -103,7 +109,7 @@ document.addEventListener('keydown', (e) => {
     case 'KeyS': keys.backward = true; break;
     case 'KeyA': keys.left = true; break;
     case 'KeyD': keys.right = true; break;
-    case 'Space': keys.up = true; break;
+    case 'Space': keys.jump = true; break; // Set jump key to true
     case 'ShiftLeft': keys.down = true; break;
   }
 });
@@ -114,7 +120,7 @@ document.addEventListener('keyup', (e) => {
     case 'KeyS': keys.backward = false; break;
     case 'KeyA': keys.left = false; break;
     case 'KeyD': keys.right = false; break;
-    case 'Space': keys.up = false; break;
+    case 'Space': keys.jump = false; break; // Set jump key to false
     case 'ShiftLeft': keys.down = false; break;
   }
 });
@@ -143,6 +149,15 @@ const gravityWellRadius = 3; // Radius for gravity effect
 // Bullet Trail Visual
 let bulletTrail;
 
+// Gravity Well Projectile Properties
+let gravityWellSphere;
+let gravityWellVelocity = new THREE.Vector3();
+let gravity = -0.0008; // Reduced gravity for longer arc - slightly reduced more
+let isGravityWellLaunched = false;
+let gravityWellTargetPoint = new THREE.Vector3(); // Store target point
+const initialUpwardVelocity = 0.06; // Increased initial upward velocity
+
+
 function onMouseClick(event) {
   if (ammoCount <= 0) {
     console.log("Out of ammo!");
@@ -153,54 +168,49 @@ function onMouseClick(event) {
   updateUI();
 
   raycaster.setFromCamera(new THREE.Vector2(), camera); // Raycast from center of camera
-
-  console.log('Specter Cube for Raycast:', specterCube); // Debug: Check specterCube validity
-
   const intersects = raycaster.intersectObjects([specterCube, terrain]); // Raycast against Specter and Terrain
 
-  console.log('Raycast Intersections:', intersects); // Debug: Check intersections
-
   if (intersects.length > 0) {
-    const intersection = intersects[0]; // Get the closest intersection
-    const point = intersection.point;
-    const objectHit = intersection.object;
+    let intersection = intersects[0];
+    const specterIntersection = intersects.find(intersect => intersect.object === specterCube);
+    if (specterIntersection) {
+      intersection = specterIntersection;
+    }
+    gravityWellTargetPoint = intersection.point.clone(); // Store the intersection point as target
 
-    console.log("Raycast Intersection Point:", point);
-    console.log("Object Hit:", objectHit);
-
-
-    // Bullet Trail Visualization - IMPROVED
-    const points = [camera.position.clone(), point];
+    // Bullet Trail Visualization - IMPROVED - visualize initial shot direction
+    const points = [camera.position.clone(), gravityWellTargetPoint];
     const bulletTrailGeometry = new THREE.BufferGeometry().setFromPoints(points);
     const bulletTrailMaterial = new THREE.LineBasicMaterial({ color: 0xffa500, linewidth: 2 }); // Orange color, thicker line
     bulletTrail = new THREE.Line(bulletTrailGeometry, bulletTrailMaterial);
     scene.add(bulletTrail);
-    console.log('Bullet Trail Created'); // Debug: Confirm bullet trail creation
 
     // Fading effect for bullet trail
-    bulletTrailMaterial.transparent = true; // Enable transparency for fading
-    let opacity = 1; // Initial opacity
+    bulletTrailMaterial.transparent = true;
+    let opacity = 1;
     const fadeInterval = setInterval(() => {
-      opacity -= 0.05; // Decrease opacity each interval
+      opacity -= 0.05;
       bulletTrailMaterial.opacity = opacity;
       if (opacity <= 0) {
         clearInterval(fadeInterval);
         if (bulletTrail && bulletTrail.parent) {
           scene.remove(bulletTrail);
           bulletTrail = null;
-          console.log('Bullet Trail Removed'); // Debug: Confirm bullet trail removal
         }
       }
-    }, 50); // Fade interval (milliseconds)
+    }, 50);
 
 
-    // Visual effect - Gravity Well Sphere
-    const gravityWellSphere = new THREE.Mesh(gravityWellGeometry, gravityWellMaterial);
-    gravityWellSphere.position.copy(point);
+    // Create Gravity Well Sphere - Projectile
+    gravityWellSphere = new THREE.Mesh(gravityWellGeometry, gravityWellMaterial);
+    gravityWellSphere.position.copy(camera.position); // Start at camera position
     scene.add(gravityWellSphere);
+    isGravityWellLaunched = true;
 
-    // Apply Gravity Effect
-    applyGravityWellEffect(gravityWellSphere, point, 2000); // Apply effect for 2 seconds (same as visual duration)
+    // Calculate initial velocity - trajectory towards target point - with upward component
+    const direction = new THREE.Vector3().subVectors(gravityWellTargetPoint, camera.position).normalize();
+    gravityWellVelocity.copy(direction.multiplyScalar(0.12)); // Reduced horizontal speed
+    gravityWellVelocity.y = initialUpwardVelocity; // Set initial upward velocity
   }
 }
 
@@ -229,8 +239,14 @@ function updateSpecterAI() {
 }
 
 
-function applyGravityWellEffect(gravityWellSphere, wellPoint, duration) {
-  const gravityObjects = [playerCube, specterCube]; // Array of objects affected by gravity, now includes specter
+function applyGravityWellEffect(gravityWellSphere, wellPoint, duration, objectHit) {
+  const gravityObjects = [];
+  if (objectHit === specterCube) {
+    gravityObjects.push(specterCube); // Only apply gravity to specter if specter was hit
+  } else {
+    gravityObjects.push(playerCube, specterCube); // Apply to both player and specter if terrain or something else is hit
+  }
+
 
   gravityObjects.forEach(obj => {
     if (obj) { // Check if object is valid
@@ -260,11 +276,11 @@ function applyGravityWellEffect(gravityWellSphere, wellPoint, duration) {
         }
       }, 50); // Interval for applying gravity effect (milliseconds)
 
-      // Clear interval and remove sphere after duration
+      // Clear interval and remove sphere after duration - Reduced duration to 1 second (1000ms)
       setTimeout(() => {
         clearInterval(gravityInterval); // Clear interval when duration is over
         scene.remove(gravityWellSphere);
-      }, duration);
+      }, 1000); // Reduced duration to 1000 ms (1 second)
     }
   });
 }
@@ -279,18 +295,28 @@ function animate() {
   // Terrain collision detection
   downRaycaster.set(playerCube.position, new THREE.Vector3(0, -1, 0)); // Raycast downwards from player position
   const intersects = downRaycaster.intersectObject(terrain);
-  if (intersects.length > 0) {
+  const onGround = intersects.length > 0; // Check if player is on the ground
+
+  if (onGround) {
     const intersectPoint = intersects[0].point;
     playerCube.position.y = intersectPoint.y + playerHeight / 2; // Adjust player position to be above terrain
+    verticalVelocity = 0; // Reset vertical velocity when on ground
+    isJumping = false; // Reset jumping state when on ground
+  } else {
+    verticalVelocity += gravityValue * 2; // Apply stronger gravity when falling
+    playerCube.position.y += verticalVelocity; // Apply vertical velocity
   }
 
 
   if (keys.forward) playerCube.position.z -= moveSpeed;
   if (keys.backward) playerCube.position.z += moveSpeed;
   if (keys.left) playerCube.position.x -= moveSpeed;
-  if (keys.right) playerCube.position.x += moveSpeed;
-  if (keys.up) playerCube.position.y += moveSpeed;
-  if (keys.down) playerCube.position.y -= moveSpeed;
+  if (keys.right) playerCube.position.x += moveSpeed; // Corrected typo here
+  if (keys.jump && onGround && !isJumping) { // Jump condition: on ground and jump key pressed and not already jumping
+    verticalVelocity = jumpVelocity; // Apply jump velocity
+    isJumping = true; // Set jumping state
+  }
+  if (keys.down) playerCube.position.y -= moveSpeed; // Keep 'down' for debug/descent
 
 
   playerCube.rotation.x += 0.01;
@@ -303,6 +329,23 @@ function animate() {
 
   updateSpecterAI(); // Update Specter AI in animation loop
   updateUI(); // Update UI elements in animation loop
+
+
+  // Gravity Well Projectile Animation
+  if (isGravityWellLaunched && gravityWellSphere) {
+    gravityWellVelocity.y += gravity; // Apply gravity
+    gravityWellSphere.position.add(gravityWellVelocity);
+
+
+    // Basic collision detection with terrain for projectile - very simplified
+    if (gravityWellSphere.position.y <= 1 && gravityWellVelocity.y < 0) { // Roughly terrain level and going down
+      isGravityWellLaunched = false; // Stop projectile motion
+      gravityWellVelocity.set(0, 0, 0); // Reset velocity
+      applyGravityWellEffect(gravityWellSphere, gravityWellSphere.position, 1000, terrain); // Reduced duration to 1 second
+      gravityWellSphere = null; // Clear sphere after effect starts
+    }
+  }
+
 
   renderer.render( scene, camera );
 }
