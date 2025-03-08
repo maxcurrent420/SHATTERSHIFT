@@ -30,7 +30,7 @@ scene.add(ambientLight);
 
 // Generate Terrain - Smoother approach
 function generateTerrain() {
-  const terrainGeometry = new THREE.PlaneGeometry(100, 100, 100, 100, 100); // Increased segments for raycasting accuracy
+  const terrainGeometry = new THREE.PlaneGeometry(100, 100, 100, 100); // Increased segments for raycasting accuracy
   const terrainMaterial = new THREE.MeshLambertMaterial({ color: 0x888888, side: THREE.DoubleSide }); // DoubleSide for proper rendering
   const terrain = new THREE.Mesh(terrainGeometry, terrainMaterial);
 
@@ -53,6 +53,7 @@ function generateTerrain() {
   }
   terrainGeometry.attributes.position.needsUpdate = true;
   terrain.rotation.x = -Math.PI / 2;
+  terrain.receiveShadow = true; // Terrain can receive shadows
   return terrain;
 }
 
@@ -66,6 +67,7 @@ const playerMaterial = new THREE.MeshLambertMaterial( { color: 0x00ff00 } );
 const playerCube = new THREE.Mesh( playerGeometry, playerMaterial );
 scene.add( playerCube );
 playerCube.position.set(0, 1, 0); // Initial position
+playerCube.castShadow = true; // Player casts shadow
 
 
 // Specter Cube
@@ -76,6 +78,7 @@ function createSpecter() {
   specterCube = new THREE.Mesh( specterGeometry, specterMaterial );
   scene.add( specterCube );
   specterCube.position.set(10, 1, 10); // Initial position away from player
+  specterCube.castShadow = true; // Specter casts shadow
 }
 createSpecter();
 
@@ -92,6 +95,7 @@ const keys = {
 };
 
 const moveSpeed = 0.1;
+const playerHeight = 1; // Approximate player height
 
 document.addEventListener('keydown', (e) => {
   switch (e.code) {
@@ -125,9 +129,11 @@ rifleLine.position.set(0, -0.1, -0.5); // Adjust position in front of camera
 scene.add(camera); // Add camera to scene after adding rifle
 
 
-// Raycaster for shooting
+// Raycaster for shooting and terrain collision
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2(); // Mouse coordinates no longer needed for ray direction
+const downRaycaster = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, -1, 0)); // Raycaster pointing downwards
+
 
 // Gravity Well Visual Effect - Sphere
 const gravityWellGeometry = new THREE.SphereGeometry(3, 32, 32); // Radius increased to 3 for effect, detail segments
@@ -269,6 +275,15 @@ window.addEventListener('click', onMouseClick, false);
 
 function animate() {
   requestAnimationFrame( animate );
+
+  // Terrain collision detection
+  downRaycaster.set(playerCube.position, new THREE.Vector3(0, -1, 0)); // Raycast downwards from player position
+  const intersects = downRaycaster.intersectObject(terrain);
+  if (intersects.length > 0) {
+    const intersectPoint = intersects[0].point;
+    playerCube.position.y = intersectPoint.y + playerHeight / 2; // Adjust player position to be above terrain
+  }
+
 
   if (keys.forward) playerCube.position.z -= moveSpeed;
   if (keys.backward) playerCube.position.z += moveSpeed;
