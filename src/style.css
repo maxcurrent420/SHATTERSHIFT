@@ -2,3 +2,25 @@ body {
   margin: 0;
   overflow: hidden; /* Prevent scrollbars */
 }
+
+#ui-container {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  color: white;
+  font-family: sans-serif;
+}
+
+#ammo-counter, #health-bar {
+  margin-bottom: 5px;
+  padding: 8px;
+  background-color: rgba(0, 0, 0, 0.5);
+  border-radius: 5px;
+}
+
+#health-bar-inner {
+  width: 100%;
+  height: 10px;
+  background-color: green;
+  border-radius: 5px;
+}

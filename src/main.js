@@ -8,6 +8,22 @@ const renderer = new THREE.WebGLRenderer();
 renderer.setSize( window.innerWidth, window.innerHeight );
 document.body.appendChild( renderer.domElement );
 
+// UI Elements
+const ammoValueDisplay = document.getElementById('ammo-value');
+const healthBarInner = document.getElementById('health-bar-inner');
+
+// Game State
+let ammoCount = 10; // Initial ammo
+const maxAmmo = 10;
+let health = 100; // Initial health
+const maxHealth = 100;
+
+// Update UI
+function updateUI() {
+  ammoValueDisplay.textContent = ammoCount;
+  healthBarInner.style.width = `${(health / maxHealth) * 100}%`;
+}
+
 // Add Ambient Light
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
 scene.add(ambientLight);
@@ -122,6 +138,14 @@ const gravityWellRadius = 3; // Radius for gravity effect
 let bulletTrail;
 
 function onMouseClick(event) {
+  if (ammoCount <= 0) {
+    console.log("Out of ammo!");
+    return; // Don't shoot if out of ammo
+  }
+
+  ammoCount--; // Decrease ammo count on shot
+  updateUI();
+
   raycaster.setFromCamera(new THREE.Vector2(), camera); // Raycast from center of camera
 
   console.log('Specter Cube for Raycast:', specterCube); // Debug: Check specterCube validity
@@ -263,6 +287,7 @@ function animate() {
   camera.position.z = playerCube.position.z + 5; // Camera behind
 
   updateSpecterAI(); // Update Specter AI in animation loop
+  updateUI(); // Update UI elements in animation loop
 
   renderer.render( scene, camera );
 }

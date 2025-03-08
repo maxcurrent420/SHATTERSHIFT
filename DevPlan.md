@@ -115,8 +115,8 @@ To ensure a structured approach to developing the MVP, we will break down the im
 *   **Objective:** Add basic UI elements and polish the core gameplay loop.
 *   **Tasks:**
     *   Implement crosshair.
-    *   Display ammo counter in UI.
-    *   Add basic instructions/objective display.
+    *   Display specters collected. 
+    *   Add basic instructions/objective and radar into the HUD
     *   Playtesting and bug fixing.
     *   Minor visual and gameplay polish.
 
